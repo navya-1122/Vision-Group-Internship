@@ -1,0 +1,93 @@
+import cv2
+import numpy as np
+import os
+
+bg_folder = r'C:\Users\navya\Downloads\image_ok_sample'
+bg_images = [
+    'completed_msc_4_june_25_image_ok_01310.jpg',
+    'completed_msc_4_june_25_image_ok_10028.jpg',
+    'completed_reyes_images_image_ok_05615.jpg',
+    'data_reclassification_output_image_ok_03224.jpg',
+    'original_data_test_image_ok_00006.jpg'
+]
+
+leg_paths = [ 
+    r'C:\Users\navya\Downloads\leg.png',
+    r'C:\Users\navya\Downloads\leg2.png',  
+    r'C:\Users\navya\Downloads\leg3.png',
+    r'C:\Users\navya\Downloads\leg4.png',
+    r'C:\Users\navya\Downloads\leg5.png'
+]
+
+cv2.namedWindow('Overlay', cv2.WINDOW_AUTOSIZE)
+output_folder = r'C:\Users\navya\Downloads\saved_images\leg'
+os.makedirs(output_folder, exist_ok=True)
+
+for i, bg_img_name in enumerate(bg_images):
+    bg_path = os.path.join(bg_folder, bg_img_name)
+    background = cv2.imread(bg_path)
+    if background is None:
+        continue
+
+    leg = cv2.imread(leg_paths[i], cv2.IMREAD_UNCHANGED)
+
+    if leg.shape[2] == 3:
+        alpha_channel = np.ones((leg.shape[0], leg.shape[1]), dtype=leg.dtype) * 255
+        leg = np.dstack([leg, alpha_channel])
+
+    if i == 0:
+        scale_up = 1.5
+    else:
+        scale_up = 3.5
+
+    new_w = int(leg.shape[1] * scale_up)
+    new_h = int(leg.shape[0] * scale_up)
+    leg_scaled = cv2.resize(leg, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+    y_offset = background.shape[0] - leg_scaled.shape[0]
+    if y_offset < 0:
+        y_offset = 0  
+
+    x_offset = background.shape[1] - leg_scaled.shape[1]
+    if x_offset < 0:
+        x_offset = 0 
+
+    h, w = leg_scaled.shape[:2]
+
+    h_roi = min(h, background.shape[0] - y_offset)
+    w_roi = min(w, background.shape[1] - x_offset)
+
+    leg_roi = leg_scaled[0:h_roi, 0:w_roi]
+    bg_roi = background[y_offset:y_offset + h_roi, x_offset:x_offset + w_roi]
+
+    b_channel, g_channel, r_channel, alpha_channel = cv2.split(leg_roi)
+    alpha = alpha_channel.astype(float) / 255.0
+    leg_bgr = cv2.merge([b_channel, g_channel, r_channel])
+
+    b, g, r = cv2.split(bg_roi)
+    hb, hg, hr = cv2.split(leg_bgr)
+
+    b = (alpha * hb + (1 - alpha) * b).astype(np.uint8)
+    g = (alpha * hg + (1 - alpha) * g).astype(np.uint8)
+    r = (alpha * hr + (1 - alpha) * r).astype(np.uint8)
+
+    roi = cv2.merge([b, g, r])
+    background[y_offset:y_offset + h_roi, x_offset:x_offset + w_roi] = roi
+
+    max_width, max_height = 800, 600
+    disp_img = background.copy()
+    h_bg, w_bg = disp_img.shape[:2]
+    scale_w = max_width / w_bg
+    scale_h = max_height / h_bg
+    scale = min(scale_w, scale_h, 1)
+
+    if scale < 1:
+        disp_img = cv2.resize(disp_img, (int(w_bg * scale), int(h_bg * scale)))
+
+    cv2.imshow('Overlay', disp_img)
+    cv2.waitKey(0)
+
+    output_path = os.path.join(output_folder, bg_img_name)
+    cv2.imwrite(output_path, background)
+
+cv2.destroyAllWindows()

@@ -1,0 +1,95 @@
+import cv2
+import numpy as np
+import os
+
+bg_folder = r'C:\Users\navya\Downloads\image_ok_sample'
+bg_images = [
+    'completed_ccswb_image_ok_05970.jpg',
+    'completed_msc_4_june_25_image_ok_10028.jpg',
+    'completed_reyes_images_image_ok_05615.jpg',
+    'data_reclassification_output_image_ok_03224.jpg',
+    'original_data_test_image_ok_00006.jpg'
+]
+
+hand_paths = [
+    r'C:\Users\navya\Downloads\hand.png',
+    r'C:\Users\navya\Downloads\hand2.png',
+    r'C:\Users\navya\Downloads\hand3.png',
+    r'C:\Users\navya\Downloads\hand4.png',
+    r'C:\Users\navya\Downloads\hand5.png'
+]
+
+cv2.namedWindow('Overlay', cv2.WINDOW_AUTOSIZE)
+output_folder = r'C:\Users\navya\Downloads\saved_images\hand'
+os.makedirs(output_folder, exist_ok=True)
+
+for i, bg_img_name in enumerate(bg_images):
+    bg_path = os.path.join(bg_folder, bg_img_name)
+    background = cv2.imread(bg_path)
+    if background is None:
+        continue
+
+    hsv_bg = cv2.cvtColor(background, cv2.COLOR_BGR2HSV)
+    lower_green = np.array([30, 20, 20])
+    upper_green = np.array([80, 255, 255])
+    mask = cv2.inRange(hsv_bg, lower_green, upper_green)
+    inverted_mask = cv2.bitwise_not(mask)
+    background = cv2.bitwise_and(background, background, mask=inverted_mask)
+
+    hand = cv2.imread(hand_paths[i], cv2.IMREAD_UNCHANGED)
+
+    if hand.shape[2] == 3:
+        alpha_channel = np.ones((hand.shape[0], hand.shape[1]), dtype=hand.dtype) * 255
+        hand = np.dstack([hand, alpha_channel])
+
+    hand_rotated = cv2.rotate(hand, cv2.ROTATE_90_CLOCKWISE)
+
+    if i == 1:
+        scale_up = 3.5
+    else:
+        scale_up = 1.5
+
+    new_w = int(hand_rotated.shape[1] * scale_up)
+    new_h = int(hand_rotated.shape[0] * scale_up)
+    hand_scaled = cv2.resize(hand_rotated, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+
+    x_offset, y_offset = 0, 255
+    h, w = hand_scaled.shape[:2]
+
+    h_roi = min(h, background.shape[0] - y_offset)
+    w_roi = min(w, background.shape[1] - x_offset)
+
+    hand_roi = hand_scaled[0:h_roi, 0:w_roi]
+    bg_roi = background[y_offset:y_offset + h_roi, x_offset:x_offset + w_roi]
+
+    b_channel, g_channel, r_channel, alpha_channel = cv2.split(hand_roi)
+    alpha = alpha_channel.astype(float) / 255.0
+    hand_bgr = cv2.merge([b_channel, g_channel, r_channel])
+
+    b, g, r = cv2.split(bg_roi)
+    hb, hg, hr = cv2.split(hand_bgr)
+
+    b = (alpha * hb + (1 - alpha) * b).astype(np.uint8)
+    g = (alpha * hg + (1 - alpha) * g).astype(np.uint8)
+    r = (alpha * hr + (1 - alpha) * r).astype(np.uint8)
+
+    roi = cv2.merge([b, g, r])
+    background[y_offset:y_offset + h_roi, x_offset:x_offset + w_roi] = roi
+
+    max_width, max_height = 800, 600
+    disp_img = background.copy()
+    h_bg, w_bg = disp_img.shape[:2]
+    scale_w = max_width / w_bg
+    scale_h = max_height / h_bg
+    scale = min(scale_w, scale_h, 1)
+
+    if scale < 1:
+        disp_img = cv2.resize(disp_img, (int(w_bg * scale), int(h_bg * scale)))
+
+    cv2.imshow('Overlay', disp_img)
+    cv2.waitKey(0)
+
+    output_path = os.path.join(output_folder, bg_img_name)
+    cv2.imwrite(output_path, background)
+
+cv2.destroyAllWindows()
